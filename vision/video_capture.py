@@ -62,9 +62,7 @@ while(True):
                 health_ratio = healthbar.measure_enemy_health(healthbar_crop)
 
         # Check player health
-        # player_health_img = screenshot[0:20, 2365:2430] # Assumes you are on 2560x1440 resolution
-        # player_health = healthbar.measure_player_health(player_health_img)
-
+        player_health = healthbar.measure_player_health(screenshot)
 
         cv.imshow('Terraria Object Detection', screenshot)
 

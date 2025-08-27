@@ -15,7 +15,7 @@ the program to be "DPI Aware" (ignore window scaling basically)
 
 ctypes.windll.user32.SetProcessDPIAware()
 
-model = YOLO('runs/detect/train2/weights/best.pt') # Adjust path as you update object detection model
+model = YOLO('runs/detect/train4/weights/best.pt') # Adjust path as you update object detection model
 
 paused = False
 loop_time = time()
@@ -62,7 +62,7 @@ while(True):
                 health_ratio = healthbar.measure_enemy_health(healthbar_crop)
 
         # Check player health
-        player_health = healthbar.measure_player_health(screenshot)
+        # player_health = healthbar.measure_player_health(screenshot)
 
         cv.imshow('Terraria Object Detection', screenshot)
 

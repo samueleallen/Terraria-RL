@@ -62,7 +62,7 @@ while(True):
                 health_ratio = healthbar.measure_enemy_health(healthbar_crop)
 
         # Check player health
-        # player_health = healthbar.measure_player_health(screenshot)
+        player_health = healthbar.measure_player_health(screenshot)
 
         cv.imshow('Terraria Object Detection', screenshot)
 

@@ -38,6 +38,8 @@ def measure_enemy_health(healthbar_img, max_healthbar_width=45, debug=True):
     to find the healthbar. If a healthbar is found, we then measure the ratio
     of how filled the healthbar is and then determine health remaining.
 
+    Filters out any detections that don't match possible healthbar shapes.
+
     Uses the maximum value across all color channels as grayscale
     to ensure that orange/red health bars stay bright enough for contour detection.
     """
@@ -51,10 +53,19 @@ def measure_enemy_health(healthbar_img, max_healthbar_width=45, debug=True):
     ret, thresh = cv.threshold(max_channel, 150, 255, cv.THRESH_BINARY)
     contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
     
-    if contours:
-        c = max(contours, key=cv.contourArea)
-        x, y, w, h = cv.boundingRect(c)
+    valid_contours = []
+
+    for contour in contours:
+        x, y, w, h = cv.boundingRect(contour)
+
+        # Apply filtering
+        if 1 <= w <= 40 and 10<= h <= 12: # need to change these values based on resolution
+            valid_contours.append((contour, x, y, w, h))
         
+    if valid_contours:
+        # Pick largest by area among valid contours
+        c, x, y, w, h = max(valid_contours, key=lambda item:cv.contourArea(item[0]))
+
         if debug:
             # If debugging is on, draw rectangle for visualization of healthbar detection
             cv.rectangle(healthbar_img, (x, y), (x+w, y+h), (0, 0, 255), 4)
@@ -73,11 +84,11 @@ def find_life_nums(img, debug=True):
     Returns a list of preprocessed images ready for cnn
     """
     life_nums = img[0:20, 2358:2440] # May need to adjust this rectangle
-
+    
     # Convert img to grayscale
     gray_img = cv.cvtColor(life_nums, cv.COLOR_BGR2GRAY)
     # Apply binary thresholding
-    ret, thresh = cv.threshold(gray_img, 125, 255, cv.THRESH_BINARY)
+    ret, thresh = cv.threshold(gray_img, 150, 255, cv.THRESH_BINARY)
 
     # Detect any contours
     contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
@@ -135,6 +146,8 @@ def measure_player_health(player_health_img):
 
     if pred_str:
         print("Prediction of player health: ", pred_str)
+
+    
 
     health_percent = 0
     # Now parse through the health values to get health as a percentage

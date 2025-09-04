@@ -11,6 +11,7 @@ class CNNModel(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3)
         self.fc1 = nn.Linear(64*5*5, 64)
+        self.fc1_dropout = nn.Dropout(0.5)
         self.fc2 = nn.Linear(64, 11)
 
     def forward(self, x):
@@ -20,6 +21,7 @@ class CNNModel(nn.Module):
         x = self.pool(x)
         x = x.view(-1, 64*5*5)
         x = F.relu(self.fc1(x))
+        x = self.fc1_dropout(x)
         x = self.fc2(x)
         return x
 
@@ -88,7 +90,7 @@ def find_life_nums(img, debug=True):
     # Convert img to grayscale
     gray_img = cv.cvtColor(life_nums, cv.COLOR_BGR2GRAY)
     # Apply binary thresholding
-    ret, thresh = cv.threshold(gray_img, 150, 255, cv.THRESH_BINARY)
+    ret, thresh = cv.threshold(gray_img, 185, 255, cv.THRESH_BINARY)
 
     # Detect any contours
     contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
@@ -99,16 +101,93 @@ def find_life_nums(img, debug=True):
 
     for c in contours:
         x, y, w, h = cv.boundingRect(c)
-        char_img = life_nums[y:y+h, x:x+w]
-        preprocessed = preprocess_img(char_img)
-        char_images.append(preprocessed)
 
+        char_img = life_nums[y:y+h, x:x+w]
+        char_images.append(char_img)
         if debug:
             cv.rectangle(life_nums, (x,y), (x+w, y+h), (0, 255, 0), 1)
 
     return char_images
 
+def filter_char_imgs(char_images):
+    """
+    Inputs: A list containing preprocessed screenshots ready for CNN of predicted locations of the chararacters.
     
+    Case 1: 5 contours detected, 5 chars predicted. 
+        A: This means we need to split our 2nd char img roughy in half and predict each side as different chars. The right should be a slash, and the left should be a number
+        
+    Case 2: 4 Contours detected, 4 chars predicted.
+        A: This means we need to split our first char img in half and predict each side as different chars, should be same output as case 1. There has to be a minimum of 5 chars
+        so this case is guranteed to have an error.
+    """
+    initial_images = char_images # Backup images for any changes we make
+    length = len(char_images)
+    # print("Length of Char Images List: ", length)
+    split_imgs = []
+
+    # print([img.shape for img in char_images])
+
+    if length == 4:
+        # Get height and width of image
+        height, width = char_images[0].shape[:2] # It has channel/batch dimension first so we need to extract 2nd and 3rd dimension of shape. (1, 28 28)
+
+        # Split image in half (may need to adjust)
+        split_imgs = [
+                    char_images[0][:, :width//2], # left half
+                    char_images[0][:, width//2:] # right half
+                    ]
+
+        # Pop out first element/image from char images list and add the rest to fixed_images
+        char_images.pop(0)
+
+        char_images[0:0] = split_imgs
+
+    if length == 5:
+        # First, have to check if a slash was detected, if so, we are fine. (2nd image should be a slash in this case)
+        # Else, we should split second image.
+        # Predict each character
+        class_names = [str(i) for i in range(10)] + ["/"]
+
+        pred_char = ""
+        char_tensor = torch.tensor(preprocess_img(char_images[1]), dtype=torch.float32).unsqueeze(0).to(device)
+        outputs = model(char_tensor)
+        preds = torch.softmax(outputs, dim=1)
+        class_index = torch.argmax(preds, dim=1).item()
+        label = class_names[class_index]
+        pred_char += label
+
+        if pred_char != "/":
+
+            height, width = char_images[0].shape[:2]
+
+            print(height, width)
+
+            # Split image in half (may need to adjust)
+            split_imgs = [
+                        char_images[0][:, :width//2], # left half
+                        char_images[0][:, width//2:] # right half
+                        ]
+
+            # Pop out second element/image from char images list and add the rest to fixed_images
+            char_images.pop(0)
+
+            char_images[0:0] = split_imgs
+
+                # From here, we must check if either split image is a slash, if not, we messed up and need to use backup list of images and split 1st image instead of 2nd.
+                # for i in range(len(char_images)):
+                #     pred_string = ""
+                #     char_tensor = torch.tensor(preprocess_img(char_images[1]), dtype=torch.float32).unsqueeze(0).to(device)
+                #     outputs = model(char_tensor)
+                #     preds = torch.softmax(outputs, dim=1)
+                #     class_index = torch.argmax(preds, dim=1).item()
+                #     label = class_names[class_index]
+                #     pred_char += label
+
+    for i in range(len(char_images)):
+        char_images[i] = preprocess_img(char_images[i])
+
+    return char_images
+
 def preprocess_img(img):
     """
     Helper function to preprocess an image to prepare for CNN model predictions
@@ -123,6 +202,31 @@ def preprocess_img(img):
 
     return normalized_img
 
+health_history = []
+N = 3
+
+def filter_health_preds(new_health):
+
+    new_health = min(new_health, 100)
+
+    # Compare to last N health values
+    if len(health_history) < N:
+        health_history.append(new_health)
+        print(health_history)
+        return new_health
+
+    # If the new value is inconsistent with previous ones, we ignore it
+    avg_recent = sum(health_history[-N:]) / N
+    if abs(new_health - avg_recent) > 20:
+        print("abs value is true, return last val")
+        # Reject the prediction and return last known value
+        return health_history[-1]
+
+    health_history.append(new_health)
+    print("returning passed health")
+    return new_health
+        
+
 def measure_player_health(player_health_img):
     """
     Receives a screenshot of the game and uses a custom-built CNN to classify digits representing player health.
@@ -133,6 +237,8 @@ def measure_player_health(player_health_img):
 
     class_names = [str(i) for i in range(10)] + ["/"]
     char_imgs = find_life_nums(player_health_img)
+    # print("Before save function call, char img length: ", len(char_imgs))
+    char_imgs = filter_char_imgs(char_imgs)
 
     # Predict each character
     pred_str = ""
@@ -147,8 +253,6 @@ def measure_player_health(player_health_img):
     if pred_str:
         print("Prediction of player health: ", pred_str)
 
-    
-
     health_percent = 0
     # Now parse through the health values to get health as a percentage
     if "/" in pred_str:
@@ -156,6 +260,7 @@ def measure_player_health(player_health_img):
         curr, max = pred_str.split("/")
         if curr.isdigit() and max.isdigit():
             curr, max = int(curr), int(max)
+            curr = filter_health_preds(curr)
             health_percent = curr / max
-            
+
     return health_percent

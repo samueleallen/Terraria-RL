@@ -19,6 +19,7 @@ model = YOLO('runs/detect/train4/weights/best.pt') # Adjust path as you update o
 
 paused = False
 loop_time = time()
+counter = 0
 while(True):
     try:
         key = cv.waitKey(1)
@@ -60,15 +61,18 @@ while(True):
                 # Optional line for debugging healthbar region. May need to check it out if resolution is not 2560x1440
                 # cv.rectangle(screenshot, (max(0, x1-5), (y2+5)), ((min(screenshot.shape[1], x2+5)), (y2+25)), (0, 255, 0), 1)
                 health_ratio = healthbar.measure_enemy_health(healthbar_crop)
-
+                
         # Check player health
-        player_health = healthbar.measure_player_health(screenshot)
+        if counter % 5 == 0:
+            player_health = healthbar.measure_player_health(screenshot)
+            print("Player Health: ", player_health)
+
 
         cv.imshow('Terraria Object Detection', screenshot)
 
-        print("FPS {}".format(1 / (time() - loop_time)))
+        # print("FPS {}".format(1 / (time() - loop_time)))
         loop_time = time()
-
+        counter += 1
         # press 'q' with the output window focused to exit program
         # waits 1ms every loop to process key inputs
         if cv.waitKey(1) == ord('q'):

@@ -1,5 +1,4 @@
-import gymnasium as gym
-from gymnasium import spaces
+from gym import Env
 import numpy as np
 
 env = gym.make()

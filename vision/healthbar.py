@@ -76,6 +76,15 @@ def measure_enemy_health(healthbar_img, max_healthbar_width=45, debug=True):
         return min(ratio, 1.0)
     else:
         return 0
+
+def find_nearest_enemy(img):
+    """
+    Args: 
+        Image of the whole screen
+    Output:
+        List of nearest 3 enemies and their locations in order
+    """
+
     
 def find_life_nums(img, debug=True):
     """

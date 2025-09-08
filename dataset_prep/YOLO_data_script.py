@@ -9,12 +9,14 @@ import os
 """
 Useful script for data collection. Loops over game, taking screenshots roughly every second
 and saves screenshots to a directory. 
+
+Note: It will overwrite the last screenshots every time you reuse the program
 """
 
 ctypes.windll.user32.SetProcessDPIAware()
 
 # Edit save directory as needed
-save_directory = "C:/Users/Sam/Documents/Comp Sci/Terraria Bot/Terraria-Bot/dataset/game_screenshots"
+save_directory = "C:/Users/Sam/Documents/Comp Sci/Terraria Bot/Terraria-Bot/dataset/game_screenshots/night_time"
 counter = 0
 
 paused = False

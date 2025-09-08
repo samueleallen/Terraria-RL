@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import re
 
 class CNNModel(nn.Module):
     def __init__(self):
@@ -76,15 +77,6 @@ def measure_enemy_health(healthbar_img, max_healthbar_width=45, debug=True):
         return min(ratio, 1.0)
     else:
         return 0
-
-def find_nearest_enemy(img):
-    """
-    Args: 
-        Image of the whole screen
-    Output:
-        List of nearest 3 enemies and their locations in order
-    """
-
     
 def find_life_nums(img, debug=True):
     """
@@ -117,6 +109,10 @@ def find_life_nums(img, debug=True):
             cv.rectangle(life_nums, (x,y), (x+w, y+h), (0, 255, 0), 1)
 
     return char_images
+
+class ProcessingError(Exception):
+    """Raised when there is an issue with character image processing."""
+    pass
 
 def filter_char_imgs(char_images):
     """
@@ -182,15 +178,18 @@ def filter_char_imgs(char_images):
 
             char_images[0:0] = split_imgs
 
-                # From here, we must check if either split image is a slash, if not, we messed up and need to use backup list of images and split 1st image instead of 2nd.
-                # for i in range(len(char_images)):
-                #     pred_string = ""
-                #     char_tensor = torch.tensor(preprocess_img(char_images[1]), dtype=torch.float32).unsqueeze(0).to(device)
-                #     outputs = model(char_tensor)
-                #     preds = torch.softmax(outputs, dim=1)
-                #     class_index = torch.argmax(preds, dim=1).item()
-                #     label = class_names[class_index]
-                #     pred_char += label
+            # From here, we must check if either split image is a slash, if not, we messed up and need to use backup list of images and split 2nd image instead of 1st.
+            
+            pred_char = ""
+            char_tensor = torch.tensor(preprocess_img(char_images[1]), dtype=torch.float32).unsqueeze(0).to(device)
+            outputs = model(char_tensor)
+            preds = torch.softmax(outputs, dim=1)
+            class_index = torch.argmax(preds, dim=1).item()
+            label = class_names[class_index]
+            pred_char += label
+            
+            if pred_char != "/":
+                raise ProcessingError("Could not find a valid slash character after splitting")
 
     for i in range(len(char_images)):
         char_images[i] = preprocess_img(char_images[i])
@@ -225,14 +224,16 @@ def filter_health_preds(new_health):
         return new_health
 
     # If the new value is inconsistent with previous ones, we ignore it
+    # TODO: Implement healing potion checks, cause this will break if we allow agent to use healing potions
     avg_recent = sum(health_history[-N:]) / N
-    if abs(new_health - avg_recent) > 20:
+    if abs(new_health - avg_recent) > 14:
         print("abs value is true, return last val")
         # Reject the prediction and return last known value
         return health_history[-1]
 
     health_history.append(new_health)
     print("returning passed health")
+
     return new_health
         
 
@@ -245,31 +246,44 @@ def measure_player_health(player_health_img):
     """
 
     class_names = [str(i) for i in range(10)] + ["/"]
-    char_imgs = find_life_nums(player_health_img)
-    # print("Before save function call, char img length: ", len(char_imgs))
-    char_imgs = filter_char_imgs(char_imgs)
 
-    # Predict each character
-    pred_str = ""
-    for i, char_img in enumerate(char_imgs):
-        char_tensor = torch.tensor(char_img, dtype=torch.float32).unsqueeze(0).to(device)
-        outputs = model(char_tensor)
-        preds = torch.softmax(outputs, dim=1)
-        class_index = torch.argmax(preds, dim=1).item()
-        label = class_names[class_index]
-        pred_str += label
+    try:
+        char_imgs = find_life_nums(player_health_img)
+        # print("Before save function call, char img length: ", len(char_imgs))
+        char_imgs = filter_char_imgs(char_imgs)
 
-    if pred_str:
-        print("Prediction of player health: ", pred_str)
+        # Predict each character
+        pred_str = ""
+        for i, char_img in enumerate(char_imgs):
+            char_tensor = torch.tensor(char_img, dtype=torch.float32).unsqueeze(0).to(device)
+            outputs = model(char_tensor)
+            preds = torch.softmax(outputs, dim=1)
+            class_index = torch.argmax(preds, dim=1).item()
+            label = class_names[class_index]
+            pred_str += label
 
-    health_percent = 0
-    # Now parse through the health values to get health as a percentage
-    if "/" in pred_str:
-        # Split into current health vs max health
-        curr, max = pred_str.split("/")
-        if curr.isdigit() and max.isdigit():
-            curr, max = int(curr), int(max)
-            curr = filter_health_preds(curr)
-            health_percent = curr / max
+        if pred_str:
+            print("Prediction of player health: ", pred_str)
+
+        if len(pred_str) <= 4:
+            raise ProcessingError("Invalid Health String detected, cannot be parsed: (False zero)")
+
+        health_percent = 0
+        # Now parse through the health values to get health as a percentage
+        if "/" in pred_str:
+            try:
+                # Split into current health vs max health
+                curr, max = pred_str.split("/")
+                if curr.isdigit() and max.isdigit():
+                    curr, max = int(curr), int(max)
+                    curr = filter_health_preds(curr)
+                    health_percent = curr / max
+            except (ValueError, IndexError):
+                # If splitting or conversion fails, catch the error.
+                # This handles cases like "/", "100/", "/100", or "100/100/100".
+                print(f"Failed to parse health string '{pred_str}'.")
+    except ProcessingError as e:
+        print(f"Error processing player health image: {e}")
+        return 5
 
     return health_percent

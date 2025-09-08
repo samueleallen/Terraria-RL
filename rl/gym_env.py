@@ -1,19 +1,30 @@
-from gym import Env
-from gym.spaces import Box, Discrete
+import sys
+import os
+
+# Get the absolute path of the parent directory of the current script's directory
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+
+# Add this parent directory to the system path.
+sys.path.append(parent_dir)
+
+import gymnasium as gym
+from gymnasium import Env
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 import pydirectinput
 import numpy as np
 import cv2 as cv
 from PIL import ImageGrab
 import pygetwindow as gw
-from time import time
+import time
 import ctypes
 from ultralytics import YOLO
-from ..vision import healthbar
+from vision import healthbar
+from vision.healthbar import ProcessingError
 import math
 
 ctypes.windll.user32.SetProcessDPIAware() # Set program to be dpi aware, it can mess with screenshots if not
-model = YOLO('runs/detect/train4/weights/best.pt') # Adjust path as you update object detection model
+model = YOLO('runs/detect/train5/weights/best.pt') # Adjust path as you update object detection model
 
 class TerrariaEnv(Env):
     def __init__(self):
@@ -21,7 +32,8 @@ class TerrariaEnv(Env):
         self.actions = ["move_left", "move_right", "jump", "attack", "do_nothing"] # 5 actions: left, right, jump, attack, stay still
         self.action_space = Discrete(len(self.actions)) 
         self.previous_enemy_healths = [0, 0 , 0, 0] # List to store previous healths of nearest 4 enemies
-        self.previous_player_health = []
+        self.previous_player_health = 0
+        self.consecutive_zero_health = 0
 
     def get_observation(self):
         # Get Terraria window
@@ -52,6 +64,7 @@ class TerrariaEnv(Env):
                 x1, y1, x2, y2 = map(int, box[:4])
 
                 # Optionally draw boxes around detected enemies
+                # TODO: Fix this
                 cv.rectangle(screenshot, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
                 # Calculate enemy center
@@ -83,10 +96,13 @@ class TerrariaEnv(Env):
             nearest_four_enemies = [] # Return empty list if no enemies found
     
         # Check player health
-        player_health = healthbar.measure_player_health(screenshot)
+        try:
+            player_health = healthbar.measure_player_health(screenshot)
 
-        return nearest_four_enemies, player_health
-
+            return nearest_four_enemies, player_health
+        except ProcessingError:
+            print("Error processing player health, returning previous value")
+            return nearest_four_enemies, self.previous_player_health
     
     def step(self, action_index):
         action_name = self.actions[action_index]
@@ -95,9 +111,13 @@ class TerrariaEnv(Env):
         nearest_four_enemies, player_health = self.get_observation()
 
         if action_name == "move_left":
-            pydirectinput.press('a')
+            pydirectinput.keyDown('a')
+            time.sleep(0.15)
+            pydirectinput.keyUp('a')
         elif action_name == "move_right":
-            pydirectinput.press('d')    
+            pydirectinput.keyDown('d')
+            time.sleep(0.15)
+            pydirectinput.keyUp('d')  
         elif action_name == "jump":
             pydirectinput.press('space')
         elif action_name == "attack":
@@ -112,15 +132,38 @@ class TerrariaEnv(Env):
 
                 # Move cursor to enemy position and click
                 pydirectinput.moveTo(int(enemy_center_x), int(enemy_center_y))
-                pydirectinput.click() # we would want it to click on the nearest enemy, for that, we need a nearest enemy function
+                
+                # Have to hold click cause game doesn't recognize single click
+                pydirectinput.mouseDown()
+                time.sleep(0.2)
+                pydirectinput.mouseUp()
             
             else:
                 # Click randomly if no enemy is detected
-                pydirectinput.click()
+                pydirectinput.mouseDown()
+                time.sleep(0.2)
+                pydirectinput.mouseUp()
 
         reward = self.calculate_reward(nearest_four_enemies, player_health)
 
-        done = player_health <= 0
+        # Add penalty for not moving
+        if action_name == "do_nothing":
+            reward -= 0.1
+        else:
+            reward += 0.05
+
+        if player_health <= 0:
+            self.consecutive_zero_health += 1
+            print("Player health said to be 0: ", player_health)
+        else:
+            self.consecutive_zero_health = 0
+
+        terminated = (self.consecutive_zero_health >= 5)
+        if terminated:
+            print("Terminating program, 5 0s detected.")
+            
+
+        truncated = False # no set time limit for now
 
         # Format observation for RL model
         formatted_obs = np.zeros(self.observation_space.shape)
@@ -132,9 +175,9 @@ class TerrariaEnv(Env):
             formatted_obs[i*4+2] = enemy['distance'] # distance to player
             formatted_obs[i*4+3] = enemy['health'] # enemy health
 
-        formatted_obs[16] = player_health
+        formatted_obs[-1] = player_health
 
-        return formatted_obs, reward, done, {}
+        return formatted_obs, reward, terminated, truncated, {}
     
     def calculate_reward(self, enemies_data, player_health):
         reward = 0
@@ -142,8 +185,10 @@ class TerrariaEnv(Env):
         current_enemy_healths = [enemy['health'] for enemy in enemies_data[:4]]
 
         # Check for damage dealt to nearest 4 enemies
-        for i, current_health in enumerate(current_enemy_healths):
+        for i in range(min(len(current_enemy_healths), len(self.previous_enemy_healths))):
             previous_health = self.previous_enemy_healths[i]
+            current_health = current_enemy_healths[i]
+
             damage_dealt = previous_health - current_health
 
             if damage_dealt > 0:
@@ -151,19 +196,48 @@ class TerrariaEnv(Env):
                 multiplier = 1 / (current_health + 0.1)
                 # Add reward for damage dealth to enemy
                 reward += damage_dealt * multiplier
+                print(f"Adding reward of {damage_dealt * multiplier} for damaging enemy.")
         self.previous_enemy_healths = current_enemy_healths
         
         # Add a negative reward if taking damage
         if player_health < self.previous_player_health:
             reward -= 5
+            print(f"Minusing reward of 5 for taking damage.")
         self.previous_player_health = player_health
 
         # Add smaller reward for staying close to enemy
         if enemies_data and enemies_data[0]['distance'] < 100:
-            reward += 1
+            reward += 3
+            print("Adding reward of 3 for staying close to enemy")
 
         return reward
-            
+    
+    def reset(self, seed=None, options=None):
+        print("Player died, resetting episode.")
 
+        time.sleep(11) # Need to change the amount of time we sleep for if fighting a boss
 
+        # Reset state variables
+        self.previous_enemy_healths = [0, 0, 0, 0]
+        self.previous_player_health = 1.0
+
+        # Get initial observation for new episode
+        nearest_enemies, player_health = self.get_observation()
+
+        # Format observation again
+        formatted_obs = np.zeros(self.observation_space.shape)
+        if nearest_enemies:
+            for i, enemy in enumerate(nearest_enemies):
+                formatted_obs[i*4] = enemy['box'][0] # x-coord
+                formatted_obs[i*4+1] = enemy['box'][1] # y-coord
+                formatted_obs[i*4+2] = enemy['distance'] # distance to player
+                formatted_obs[i*4+3] = enemy['health'] # enemy health
+
+        formatted_obs[-1] = player_health
+
+        info = {}
+
+        return formatted_obs, info
+    
+    
         

@@ -1,0 +1,14 @@
+names:
+- Demon Eye
+- Green Slime
+- Zombie
+nc: 3
+roboflow:
+  license: CC BY 4.0
+  project: terraria-object-detection-ctgmt
+  url: https://universe.roboflow.com/terraria-rl/terraria-object-detection-ctgmt/dataset/6
+  version: 6
+  workspace: terraria-rl
+test: C:/Users/Sam/Documents/Comp Sci/Terraria Bot/Terraria-Bot/Terraria-Object-Detection-6/test/images
+train: C:/Users/Sam/Documents/Comp Sci/Terraria Bot/Terraria-Bot/Terraria-Object-Detection-6/train/images
+val: C:/Users/Sam/Documents/Comp Sci/Terraria Bot/Terraria-Bot/Terraria-Object-Detection-6/valid/images

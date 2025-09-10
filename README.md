@@ -40,11 +40,11 @@ The vision pipeline is crucial for the agent's ability to see the game and inclu
  * The Terraria game running in a 2560x1440 resolution.
  * Terraria's health/mana style set to 'Fancy 2' in the settings.
 
-**Installation**
+**Installation**  
  1. Clone this repository.
  2. Install the required dependencies: `pip install -r requirements.txt`
 
-**Running The Agent**
+**Running The Agent**  
 To start the training process, run the main training script: `python rl/train.py`  
 
 This script will launch the environment and begin the training process.

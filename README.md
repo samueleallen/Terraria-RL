@@ -39,6 +39,7 @@ The vision pipeline is crucial for the agent's ability to see the game and inclu
  * A python environment
  * The Terraria game running in a 2560x1440 resolution.
  * Terraria's health/mana style set to 'Fancy 2' in the settings.
+ * Must have a Cuda-compatible GPU for real-time performance
 
 **Installation**  
  1. Clone this repository.

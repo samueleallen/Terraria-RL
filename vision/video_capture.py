@@ -83,7 +83,7 @@ while(True):
         # Find the nearest enemy
         if enemy_data:
             nearest_enemy = min(enemy_data, key=lambda x: x['distance'])
-            print("Nearest enemy found at distance: ", nearest_enemy[distance])
+            print("Nearest enemy found at distance: ", nearest_enemy['distance'])
                 
         # Check player health
         if counter % 5 == 0:

@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import re
+import matplotlib.pyplot as plt
 
 class CNNModel(nn.Module):
     def __init__(self):
@@ -90,8 +90,8 @@ def find_life_nums(img, debug=True):
     
     # Convert img to grayscale
     gray_img = cv.cvtColor(life_nums, cv.COLOR_BGR2GRAY)
-    # Apply binary thresholding
-    ret, thresh = cv.threshold(gray_img, 185, 255, cv.THRESH_BINARY)
+    # Apply binary thresholding (185 was magic value for day, failed during night)
+    ret, thresh = cv.threshold(gray_img, 140, 255, cv.THRESH_BINARY)
 
     # Detect any contours
     contours, hierarchy = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
@@ -100,6 +100,27 @@ def find_life_nums(img, debug=True):
     # Sort each contour from left to right
     contours = sorted(contours, key=lambda c: cv.boundingRect(c)[0])
 
+    # Make a copy to draw contours on
+    contour_img = life_nums.copy()
+    cv.drawContours(contour_img, contours, -1, (0, 255, 0), 1)
+
+    # Plot all three images
+    fig, axes = plt.subplots(1, 3, figsize=(15,5))
+
+    axes[0].imshow(cv.cvtColor(life_nums, cv.COLOR_BGR2RGB))
+    axes[0].set_title("Original")
+    axes[0].axis("off")
+
+    axes[1].imshow(thresh, cmap='gray')
+    axes[1].set_title("Binary Threshold")
+    axes[1].axis("off")
+
+    axes[2].imshow(cv.cvtColor(contour_img, cv.COLOR_BGR2RGB))
+    axes[2].set_title("Contours Detected")
+    axes[2].axis("off")
+
+    plt.show()
+
     for c in contours:
         x, y, w, h = cv.boundingRect(c)
 
@@ -107,6 +128,8 @@ def find_life_nums(img, debug=True):
         char_images.append(char_img)
         if debug:
             cv.rectangle(life_nums, (x,y), (x+w, y+h), (0, 255, 0), 1)
+
+    
 
     return char_images
 
@@ -133,6 +156,7 @@ def filter_char_imgs(char_images):
     # print([img.shape for img in char_images])
 
     if length == 4:
+        print("Trying to fix string of length 4")
         # Get height and width of image
         height, width = char_images[0].shape[:2] # It has channel/batch dimension first so we need to extract 2nd and 3rd dimension of shape. (1, 28 28)
 
@@ -148,6 +172,7 @@ def filter_char_imgs(char_images):
         char_images[0:0] = split_imgs
 
     if length == 5:
+        print("Trying to fix string of length 5")
         # First, have to check if a slash was detected, if so, we are fine. (2nd image should be a slash in this case)
         # Else, we should split second image.
         # Predict each character
@@ -249,8 +274,9 @@ def measure_player_health(player_health_img):
 
     try:
         char_imgs = find_life_nums(player_health_img)
-        # print("Before save function call, char img length: ", len(char_imgs))
+        print("Before save function call, char img length: ", len(char_imgs))
         char_imgs = filter_char_imgs(char_imgs)
+        print("After save function call, char img length: ", len(char_imgs))
 
         # Predict each character
         pred_str = ""

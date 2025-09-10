@@ -94,15 +94,18 @@ class TerrariaEnv(Env):
             nearest_four_enemies = sorted_enemies[:4]
         else: 
             nearest_four_enemies = [] # Return empty list if no enemies found
-    
+
         # Check player health
         try:
             player_health = healthbar.measure_player_health(screenshot)
-
+            cv.imshow("Terraria", screenshot)
+            cv.waitKey(1)
             return nearest_four_enemies, player_health
         except ProcessingError:
             print("Error processing player health, returning previous value")
             return nearest_four_enemies, self.previous_player_health
+        
+        
     
     def step(self, action_index):
         action_name = self.actions[action_index]

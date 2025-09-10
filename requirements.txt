@@ -1,0 +1,9 @@
+gymnasium
+pydirectinput
+numpy
+opencv-python
+pillow
+pygetwindow
+ultralytics
+torch
+stable-baselines3
